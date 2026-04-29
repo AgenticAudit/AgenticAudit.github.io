@@ -1,35 +1,39 @@
-name: Deploy Agent Fragility Scanner
+name: Deploy Forensic Scanner
 
 on:
   push:
-      branches:
-            - main  # Set this to your default branch name
+    branches: [ main ]
 
-            jobs:
-              build-and-deploy:
-                  runs-on: ubuntu-latest
-                      steps:
-                            - name: Checkout Repository
-                                    uses: actions/checkout@v4
+permissions:
+  contents: write
 
-                                          - name: Setup Node.js
-                                                  uses: actions/setup-node@v4
-                                                          with:
-                                                                    node-version: 18
-                                                                              cache: 'npm'
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-                                                                                    - name: Install Dependencies
-                                                                                            run: npm install
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
 
-                                                                                                  - name: Build Production Bundle
-                                                                                                          # This line injects your GitHub Secret into the build environment
-                                                                                                                  run: npm run build
-                                                                                                                          env:
-                                                                                                                                    REACT_APP_FIREBASE_CONFIG: ${{ secrets.REACT_APP_FIREBASE_CONFIG }}
+      - name: Install Dependencies
+        # We delete the lockfile here to prevent ARM/x64 conflicts
+        run: |
+          rm -f package-lock.json
+          npm install --legacy-peer-deps
 
-                                                                                                                                          - name: Deploy to GitHub Pages
-                                                                                                                                                  uses: peaceiris/actions-gh-pages@v3
-                                                                                                                                                          with:
-                                                                                                                                                                    github_token: ${{ secrets.GITHUB_TOKEN }}
-                                                                                                                                                                              publish_dir: ./dist # Use ./dist if you are using Vite
-                                                                                                                                                                              
+      - name: Build
+        run: npm run build
+        env:
+          # VITE_ prefix is MANDATORY for the frontend to see the secret
+          VITE_FIREBASE_CONFIG: ${{ secrets.VITE_FIREBASE_CONFIG }}
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
