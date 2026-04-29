@@ -8,29 +8,34 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          # Cache is intentionally omitted here because we must delete the lockfile
 
-      - name: Install & Build
+      - name: Clean & Install Dependencies
+        # MANDATORY: Deletes the ARM-generated lockfile to prevent Ubuntu x64 architecture crashes
         run: |
+          rm -f package-lock.json
           npm install --legacy-peer-deps
-          npm run build
+
+      - name: Build Production Bundle
+        run: npm run build
         env:
-          # Mapping individual keys directly to the build environment
+          # EXPLICIT MAPPING: Pulls individual keys from GitHub Secrets into Vite
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
 
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
