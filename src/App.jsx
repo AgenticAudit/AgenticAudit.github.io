@@ -1,57 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, Terminal, Lock, Crosshair, FileSearch, RefreshCw, Rocket, 
-  ShieldAlert, Gauge, Layers, Database, Wrench, Mail, Fingerprint
+  Activity, AlertTriangle, ShieldCheck, Zap, Terminal, ChevronRight, 
+  Lock, Crosshair, Cpu, FileSearch, Share2, RefreshCw, Rocket, 
+  ShieldAlert, Binary, Gauge, Layers, Database, Cpu as Processor,
+  Wrench, Mail, Fingerprint
 } from 'lucide-react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 /**
- * --- GLOBAL ERROR BOUNDARY ---
- * Prevents the "Blank White Screen of Death".
- */
-class GlobalErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
-  componentDidCatch(error, errorInfo) { console.error("Critical React Crash:", error, errorInfo); }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-[#050507] flex flex-col items-center justify-center p-6 font-mono">
-          <ShieldAlert className="w-16 h-16 text-rose-500 mb-6 animate-pulse" />
-          <h2 className="text-rose-500 font-black uppercase tracking-widest mb-4">Application Crash Detected</h2>
-          <div className="bg-black border border-rose-900/50 p-6 text-zinc-500 text-xs max-w-xl overflow-auto">
-            {this.state.error?.toString()}
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-/**
  * --- FORENSIC INFRASTRUCTURE ---
- * ZERO-PARSE ARCHITECTURE: Recovers individual VITE_ keys.
+ * ZERO-PARSE ARCHITECTURE: Recovers individual VITE_ keys to bypass JSON Handshake Errors.
+ * FIXED: Bypasses Vite esbuild template literal ($) compilation bugs.
  */
 const APP_ID = "agent-fragility-noir-001";
 let auth, db;
 
 const getSafeConfig = () => {
   try {
+    // Extract variables first to prevent Vite compiler crashes
     const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+    const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+    const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    const appId = import.meta.env.VITE_FIREBASE_APP_ID;
+
     if (!apiKey || apiKey === "undefined") return null;
-    
+
+    // Use standard concatenation instead of template literals (${}) to avoid esbuild syntax errors
+    let bucket = undefined;
+    if (projectId && projectId !== "undefined") {
+      bucket = projectId + ".firebasestorage.app";
+    }
+
     return {
       apiKey: apiKey,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_PROJECT_ID ? `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebasestorage.app` : undefined,
+      authDomain: authDomain,
+      projectId: projectId,
+      appId: appId,
+      storageBucket: bucket
     };
   } catch (e) {
-    console.error("Forensic Config Error:", e);
+    console.error("Forensic Config Error: Check VITE_FIREBASE_* keys.");
     return null;
   }
 };
@@ -69,7 +59,7 @@ if (isConfigured) {
   }
 }
 
-function ForensicScanner() {
+export default function App() {
   const [user, setUser] = useState(null);
   const [inputText, setInputText] = useState('');
   const [email, setEmail] = useState('');
@@ -101,6 +91,7 @@ function ForensicScanner() {
     if (!db || !capturedEmail) return false;
     setHarvesting(true);
     try {
+      // PATH: /artifacts/{appId}/public/data/leads
       await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'leads'), {
         email: capturedEmail,
         timestamp: serverTimestamp(),
@@ -117,7 +108,7 @@ function ForensicScanner() {
     }
   };
 
-  // HEURISTIC FORENSIC ENGINE (WITH FULL TOKEN GLITCH LOGIC)
+  // HEURISTIC FORENSIC ENGINE
   const analyzeTraceLog = (text, iteration) => {
     if (!text.trim()) return null;
     const words = text.split(/(\s+)/);
@@ -134,13 +125,12 @@ function ForensicScanner() {
     const repetitiveCount = Object.values(wordFreq).filter(f => f > 2).reduce((a, b) => a + (b - 1), 0);
     const redundancyRatio = processedWords.length > 0 ? (repetitiveCount / processedWords.length) * 100 : 0;
     
-    // FULL FORENSIC JUICE: Token classification for UI feed
     const tokenMap = words.map((token, idx) => {
       const clean = token.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
       let type = 'safe';
       if (clean && wordFreq[clean] > 2) type = 'danger';
-      else if (token.length > 12) type = 'warning';
-      return { text: token, type, id: `${idx}-${clean}` };
+      else if (token.length > 16) type = 'warning';
+      return { text: token, type, id: idx };
     });
 
     const regressionPenalty = iteration > 1 ? (iteration * 6.5) : 0;
@@ -161,11 +151,9 @@ function ForensicScanner() {
     
     setIsScanning(true);
     setScanComplete(false);
-    setScanSteps([]); // Reset steps for new scan
     const currentIteration = scanCount + 1;
     setScanCount(currentIteration);
 
-    // FULL FORENSIC JUICE: Step-by-step animation sequence
     const forensicSteps = ["Initializing Obsidian_Heuristic...", "Mapping Recursive Vectors...", "Calculating Entropy Coefficients...", "Generating Forensic Heatmap...", "Finalizing Fragility Matrix..."];
     forensicSteps.forEach((step, index) => {
       setTimeout(() => {
@@ -328,7 +316,7 @@ function ForensicScanner() {
                   {/* FULL FORENSIC JUICE: Token Glitch Feed */}
                   <div className="mt-8 h-24 overflow-y-auto custom-scrollbar border-t border-zinc-800 pt-6 flex flex-wrap gap-x-1.5 gap-y-1 font-mono text-[9px]">
                     {metrics.tokens.slice(0, 150).map((t, idx) => (
-                      <span key={t.id || idx} className={`${t.type === 'danger' ? 'text-rose-500 glitch-chroma font-bold' : t.type === 'warning' ? 'text-amber-500' : 'text-zinc-600'}`}>{t.text}</span>
+                      <span key={`${t.id}-${idx}`} className={`${t.type === 'danger' ? 'text-rose-500 glitch-chroma font-bold' : t.type === 'warning' ? 'text-amber-500' : 'text-zinc-600'}`}>{t.text}</span>
                     ))}
                   </div>
                 </div>
@@ -380,13 +368,5 @@ function ForensicScanner() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; }
       `}} />
     </div>
-  );
-}
-
-export default function ErrorBoundaryWrapper() {
-  return (
-    <GlobalErrorBoundary>
-      <ForensicScanner />
-    </GlobalErrorBoundary>
   );
 }
