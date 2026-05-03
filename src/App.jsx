@@ -105,20 +105,22 @@ export default function App() {
     setAuthError('');
     try {
       // PATH: /artifacts/{appId}/public/data/leads
-      await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'leads'), {
+      const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'leads'), {
         email: capturedEmail,
         timestamp: serverTimestamp(),
         source: 'forensic_obsidian_gate',
         log_preview: inputText.substring(0, 120),
         forensic_id: crypto.randomUUID()
       });
+      console.log("Data Moat Secured:", docRef.id);
       setHarvesting(false);
       return true;
     } catch (e) {
       console.error("Data Moat Access Denied:", e);
-      setAuthError("Handshake Error: Failed to store record. Retry or check connection.");
+      // Log more specific error info if available
+      const errorMessage = e.code ? `[${e.code}] ${e.message}` : e.message;
+      setAuthError(`Handshake Error: ${errorMessage}`);
       setHarvesting(false);
-      // If it fails, we return false to keep the modal open as requested by workflow
       return false;
     }
   };
