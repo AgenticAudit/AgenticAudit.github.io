@@ -25,7 +25,7 @@ const getSafeConfig = () => {
     const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
     const appId = import.meta.env.VITE_FIREBASE_APP_ID;
 
-    if (!apiKey || apiKey === "undefined") return null;
+    if (!apiKey || apiKey === "undefined" || !projectId || projectId === "undefined") return null;
 
     // Use standard concatenation instead of template literals (${}) to avoid esbuild syntax errors
     let bucket = undefined;
@@ -35,7 +35,7 @@ const getSafeConfig = () => {
 
     return {
       apiKey: apiKey,
-      authDomain: authDomain,
+      authDomain: authDomain || (projectId + ".firebaseapp.com"),
       projectId: projectId,
       appId: appId,
       storageBucket: bucket
@@ -47,15 +47,15 @@ const getSafeConfig = () => {
 };
 
 const firebaseConfig = getSafeConfig();
-const isConfigured = !!(firebaseConfig && firebaseConfig.apiKey);
+const isConfigured = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId);
 
 if (isConfigured) {
   try {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     auth = getAuth(app);
     db = getFirestore(app);
-  } catch {
-    console.error("Critical: Firebase Handshake Denied");
+  } catch (err) {
+    console.error("Critical: Firebase Handshake Denied", err);
   }
 }
 
@@ -71,13 +71,17 @@ export default function App() {
   const [scanCount, setScanCount] = useState(0);
   const [isModified, setIsModified] = useState(false);
   const [harvesting, setHarvesting] = useState(false);
+  const [authError, setAuthError] = useState('');
 
   // AUTH LIFECYCLE: Secure Anonymous Node Link
   useEffect(() => {
     if (!isConfigured || !auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (!currentUser) {
-        signInAnonymously(auth).catch(e => console.error("Identity Verification Failed", e));
+        signInAnonymously(auth).catch(e => {
+          console.error("Identity Verification Failed", e);
+          setAuthError("Auth Protocol Failed: " + e.message);
+        });
       }
     });
     return () => unsubscribe();
@@ -85,8 +89,20 @@ export default function App() {
 
   // LEAD HARVESTING PROTOCOL: ARCHIVING TO DATA MOAT
   const harvestLead = async (capturedEmail) => {
-    if (!db || !capturedEmail) return false;
+    if (!capturedEmail || !capturedEmail.includes('@')) {
+      setAuthError("Valid email required for forensic unlock.");
+      return false;
+    }
+    
+    // Fallback: If DB is not available, we report the error to prevent silent failure.
+    if (!db) {
+      console.error("Data Moat Offline: Check VITE_FIREBASE_PROJECT_ID.");
+      setAuthError("System Error: Forensic vault connection failed.");
+      return false; 
+    }
+
     setHarvesting(true);
+    setAuthError('');
     try {
       // PATH: /artifacts/{appId}/public/data/leads
       await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'leads'), {
@@ -100,7 +116,9 @@ export default function App() {
       return true;
     } catch (e) {
       console.error("Data Moat Access Denied:", e);
+      setAuthError("Handshake Error: Failed to store record. Retry or check connection.");
       setHarvesting(false);
+      // If it fails, we return false to keep the modal open as requested by workflow
       return false;
     }
   };
@@ -148,6 +166,7 @@ export default function App() {
     
     setIsScanning(true);
     setScanComplete(false);
+    setScanSteps([]);
     const currentIteration = scanCount + 1;
     setScanCount(currentIteration);
 
@@ -205,12 +224,22 @@ export default function App() {
               <input 
                 type="email" placeholder="operator@system.io"
                 className="w-full bg-black border border-zinc-800 rounded-sm py-4 px-4 text-xs font-mono text-zinc-300 outline-none focus:border-rose-500 transition-all"
-                value={email} onChange={(e) => setEmail(e.target.value)}
+                value={email} onChange={(e) => { setEmail(e.target.value); setAuthError(''); }}
+                onKeyDown={(e) => { if(e.key === 'Enter' && !harvesting) document.getElementById('auth-submit')?.click(); }}
               />
+              {authError && <p className="text-[9px] text-rose-500 font-mono text-center uppercase animate-pulse">{authError}</p>}
               <button 
-                onClick={async () => { if(email.includes('@')) { const saved = await harvestLead(email); if(saved) { setShowAuthModal(false); handleRunScan(); } } }}
-                disabled={harvesting}
-                className="w-full h-14 bg-zinc-100 text-black font-black uppercase text-[10px] tracking-[0.3em] hover:invert transition-all flex items-center justify-center"
+                id="auth-submit"
+                onClick={async () => { 
+                  const saved = await harvestLead(email); 
+                  if(saved) { 
+                    setShowAuthModal(false); 
+                    // Ensure state transition is clean before starting scan
+                    setTimeout(() => handleRunScan(), 50);
+                  } 
+                }}
+                disabled={harvesting || !email.includes('@')}
+                className="w-full h-14 bg-zinc-100 text-black disabled:bg-zinc-900 disabled:text-zinc-700 font-black uppercase text-[10px] tracking-[0.3em] hover:enabled:invert transition-all flex items-center justify-center"
               >
                 {harvesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Establish Secure Link"}
               </button>
@@ -329,7 +358,8 @@ export default function App() {
               <div className="rounded-sm border border-zinc-800 bg-[#09090b] p-8 flex flex-col relative overflow-hidden group">
                 <span className="text-zinc-600 text-[9px] uppercase tracking-[0.3em] mb-4 z-10 flex items-center gap-2"><Gauge className="w-3 h-3 text-rose-500" /> Fragility Rating</span>
                 <span className={`text-6xl font-black tracking-tighter ${metrics.score > 60 ? 'text-rose-500' : 'text-amber-400'}`}>{metrics.score}%</span>
-                {scanCount > 1 && <div className="text-rose-500 text-[9px] font-mono mt-2 uppercase animate-pulse">Regression Drift Detected</div>}
+                {metrics.score > 60 && <div className="text-rose-500 text-[8px] font-bold mt-2 uppercase animate-pulse border border-rose-500/30 px-2 py-1 bg-rose-500/5 text-center">Hardening Required ($500)</div>}
+                {scanCount > 1 && <div className="text-rose-500 text-[9px] font-mono mt-2 uppercase">Regression Drift Detected</div>}
               </div>
               <div className="rounded-sm border border-zinc-800 bg-[#09090b] p-8 flex flex-col justify-center border-l-rose-500/20">
                 <span className="text-zinc-600 text-[9px] uppercase mb-4 flex items-center gap-2"><RefreshCw className="w-3 h-3 text-zinc-400" /> Recursive Loops</span>
