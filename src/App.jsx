@@ -133,33 +133,146 @@ export default function App() {
     }
   };
 
-  // HEURISTIC FORENSIC ENGINE
+  // HEURISTIC FORENSIC ENGINE: MULTI-PARSER STRATEGY
   const analyzeTraceLog = (text, iteration) => {
     if (!text.trim()) return null;
-    const words = text.split(/(\s+)/);
-    const processedWords = text.toLowerCase().match(/\b(\w+)\b/g) || [];
-    const lines = text.trim().split('\n').filter(l => l.length > 5);
 
-    let loopCount = 0;
-    for (let i = 0; i < lines.length - 1; i++) {
-      if (lines[i].trim() === lines[i + 1].trim()) loopCount += 1;
+    let loops = 0;
+    let redundancy = 0;
+    let bleed = 0;
+    let score = 42;
+    let tokens = [];
+
+    const trimmed = text.trim();
+    // Auto-Detection
+    const isJson = (trimmed.startsWith('{') || trimmed.startsWith('['));
+    const isJsonL = trimmed.includes('\n') && (trimmed.split('\n')[0].trim().startsWith('{'));
+
+    try {
+      if (isJsonL && !isJson) {
+        // --- 4. Log-Level Filter (OpenClaw / Server Logs Focus) ---
+        const lines = trimmed.split('\n');
+        let errorCount = 0;
+        let criticalKeywords = 0;
+
+        lines.forEach((line, idx) => {
+          try {
+            if (!line.trim()) return;
+            const data = JSON.parse(line);
+            const level = (data.level || 'info').toLowerCase();
+            const payload = JSON.stringify(data).toLowerCase();
+            
+            let type = 'safe';
+            if (level === 'error' || level === 'warn') {
+              type = 'danger';
+              errorCount++;
+            }
+
+            if (payload.match(/loop|dependency|circular|timeout/)) {
+              criticalKeywords++;
+              type = 'danger';
+            }
+
+            tokens.push({ 
+              text: `[LOG ${level.toUpperCase()}] ${data.message || data.msg || payload.substring(0, 60)}`, 
+              type, 
+              id: idx 
+            });
+          } catch (e) { /* skip malformed line */ }
+        });
+
+        loops = Math.floor(errorCount / 2);
+        bleed = criticalKeywords * 15;
+        score = Math.min(99, 42 + (errorCount * 12) + (criticalKeywords * 25));
+        if (criticalKeywords > 0 || errorCount > 3) score = Math.max(score, 90);
+
+      } else if (isJson) {
+        // --- 2. JSON Parser (LangChain & Gemini Focus) ---
+        const data = JSON.parse(trimmed);
+        const flattened = JSON.stringify(data).toLowerCase();
+        
+        // Metrics Extraction
+        const totalTokens = data.total_tokens || data.usageMetadata?.totalTokenCount || data.token_usage?.total_tokens || 0;
+        if (totalTokens > 2000) {
+          bleed = Math.min(100, Math.floor(totalTokens / 50));
+        }
+
+        // Loop Detection (Consecutive Tool Calls)
+        const findTools = (obj, acc = []) => {
+          if (!obj || typeof obj !== 'object') return acc;
+          if (Array.isArray(obj)) obj.forEach(i => findTools(i, acc));
+          else {
+            if (obj.tool_calls || obj.actions) acc.push(...(obj.tool_calls || obj.actions));
+            Object.values(obj).forEach(v => findTools(v, acc));
+          }
+          return acc;
+        };
+        const tools = findTools(data);
+        for (let i = 0; i < tools.length - 1; i++) {
+          if (tools[i].name === tools[i+1].name && JSON.stringify(tools[i].args) === JSON.stringify(tools[i+1].args)) {
+            loops++;
+          }
+        }
+
+        if (data.finishReason === 'ERROR' || flattened.includes('error')) score += 20;
+        score = Math.min(99, score + (loops * 30) + (bleed / 2));
+
+        tokens = Object.entries(data).slice(0, 20).map(([k, v], idx) => ({
+          text: `[PROPERTY] ${k}: ${JSON.stringify(v).substring(0, 80)}`,
+          type: (k.toLowerCase().includes('error') || k.toLowerCase().includes('fail')) ? 'danger' : 'safe',
+          id: idx
+        }));
+
+      } else {
+        // --- 3. Regex Streamer (CrewAI / AutoGPT Focus) ---
+        const blocks = [];
+        const regex = /(Thought|Action|Action Input|Observation):\s*([\s\S]*?)(?=(Thought|Action|Action Input|Observation):|$)/g;
+        let match;
+        while ((match = regex.exec(trimmed)) !== null) {
+          blocks.push({ type: match[1], content: match[2].trim() });
+        }
+
+        if (blocks.length === 0) throw new Error("Regex stream failed");
+
+        for (let i = 0; i < blocks.length; i++) {
+          const b = blocks[i];
+          if (b.type === 'Thought') {
+            const wc = b.content.split(/\s+/).length;
+            if (wc > 50) bleed += Math.floor(wc / 10);
+          }
+          if (b.type === 'Action' && i + 2 < blocks.length) {
+            const nextAction = blocks.slice(i + 1).find(x => x.type === 'Action');
+            if (nextAction && nextAction.content === b.content) {
+              const bInput = blocks[i+1]?.type === 'Action Input' ? blocks[i+1].content : null;
+              const nextInput = blocks[blocks.indexOf(nextAction)+1]?.type === 'Action Input' ? blocks[blocks.indexOf(nextAction)+1].content : null;
+              if (bInput && nextInput && bInput === nextInput) {
+                loops++;
+                score += 45; // Massive penalty
+              }
+            }
+          }
+        }
+
+        score = Math.min(99, score + (loops * 20) + (bleed * 0.8));
+        tokens = blocks.map((b, idx) => ({
+          text: `[${b.type.toUpperCase()}] ${b.content.substring(0, 100)}`,
+          type: b.type === 'Observation' ? 'warning' : 'safe',
+          id: idx
+        }));
+      }
+    } catch (e) {
+      // Robust Fallback: Regex Streamer / Raw Line Analysis
+      const lines = trimmed.split('\n').filter(l => l.length > 5);
+      lines.forEach((line, idx) => {
+        tokens.push({ text: `[RAW] ${line.substring(0, 100)}`, type: 'safe', id: idx });
+        if (idx > 0 && line.trim() === lines[idx-1].trim()) loops++;
+      });
+      score = Math.min(99, 42 + (loops * 15));
     }
 
-    const wordFreq = {};
-    processedWords.forEach(w => { if (w.length > 3) wordFreq[w] = (wordFreq[w] || 0) + 1; });
-    const repetitiveCount = Object.values(wordFreq).filter(f => f > 2).reduce((a, b) => a + (b - 1), 0);
-    const redundancyRatio = processedWords.length > 0 ? (repetitiveCount / processedWords.length) * 100 : 0;
-    
-    const tokenMap = words.map((token, idx) => {
-      const clean = token.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-      let type = 'safe';
-      if (clean && wordFreq[clean] > 2) type = 'danger';
-      else if (token.length > 16) type = 'warning';
-      return { text: token, type, id: idx };
-    });
-
+    redundancy = Math.floor(loops * 14.5);
     const regressionPenalty = iteration > 1 ? (iteration * 6.5) : 0;
-    const finalScore = Math.min(99, Math.max(15, Math.floor((loopCount * 14) + (redundancyRatio * 0.9) + regressionPenalty + 42)));
+    const finalScore = Math.min(99, Math.max(15, Math.floor(score + regressionPenalty)));
     
     const grid = Array.from({ length: 100 }, (_, i) => ({
       id: i,
@@ -167,7 +280,7 @@ export default function App() {
       critical: ((Math.sin(i * 0.5 + finalScore) * 50) + 50) > (86 - (iteration * 2.5))
     }));
 
-    return { loops: Math.max(1, loopCount), redundancy: Math.floor(redundancyRatio), bleed: Math.floor(redundancyRatio * 0.75), score: finalScore, tokens: tokenMap, grid };
+    return { loops: Math.max(0, loops), redundancy, bleed: Math.floor(bleed), score: finalScore, tokens, grid };
   };
 
   const handleRunScan = () => {
@@ -387,6 +500,29 @@ export default function App() {
               <p className="text-zinc-500 text-base mb-12 max-w-2xl font-medium leading-relaxed">
                 {scanCount > 1 ? "Manual trace modification has introduced structural fragmentation. Your DIY hardening attempt has compromised recursive stability benchmarks." : "The trace buffer confirms a critical action loop. Manual intervention is required to stabilize the reasoning node before full token exhaustion occurs in production."}
                 <br/><br/><span className="font-bold text-rose-500 text-xl uppercase tracking-tighter">↳ Secure 48 HOUR Agent Sprint to be production ready by tomorrow!</span>
+              </p>
+              <div className="flex flex-col sm:flex-row items-center gap-6 w-full justify-center max-w-2xl">
+                <button onClick={() => window.location.href = `https://buy.stripe.com/test_sprint?prefilled_email=${encodeURIComponent(email)}`} className="w-full sm:w-auto h-16 px-12 bg-zinc-100 text-black font-black uppercase text-[11px] tracking-[0.3em] hover:invert transition-all shadow-[0_0_30px_rgba(255,255,255,0.05)] active:scale-95"><Rocket className="w-4 h-4" /><span>AGENT PRODUCTION SPRINT ($500)</span></button>
+                <button onClick={() => window.location.href = `https://buy.stripe.com/test_diagnostic?prefilled_email=${encodeURIComponent(email)}`} className="w-full sm:w-auto h-16 px-10 border border-zinc-700 text-[9px] font-bold text-zinc-500 uppercase tracking-widest hover:bg-zinc-900 hover:text-zinc-100">Agent Diagnostics Report ($99)</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+        @keyframes glitchChroma { 0% { text-shadow: 1px 0 #f43f5e, -1px 0 #0ea5e9; opacity: 1; } 50% { text-shadow: -1px 0 #f43f5e, 1px 0 #0ea5e9; opacity: 0.8; } 100% { text-shadow: 1px 0 #f43f5e, -1px 0 #0ea5e9; opacity: 1; } }
+        .glitch-chroma { animation: glitchChroma 2s ease-in-out infinite; }
+        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; }
+      `}} />
+    </div>
+    </GlobalErrorBoundary>
+  );
+}
+
+tomorrow!</span>
               </p>
               <div className="flex flex-col sm:flex-row items-center gap-6 w-full justify-center max-w-2xl">
                 <button onClick={() => window.location.href = `https://buy.stripe.com/test_sprint?prefilled_email=${encodeURIComponent(email)}`} className="w-full sm:w-auto h-16 px-12 bg-zinc-100 text-black font-black uppercase text-[11px] tracking-[0.3em] hover:invert transition-all shadow-[0_0_30px_rgba(255,255,255,0.05)] active:scale-95"><Rocket className="w-4 h-4" /><span>AGENT PRODUCTION SPRINT ($500)</span></button>
