@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { 
-  Activity, AlertTriangle, ShieldCheck, Zap, Terminal, ChevronRight, 
-  Lock, Crosshair, Cpu, FileSearch, Share2, RefreshCw, Rocket, 
-  ShieldAlert, Binary, Gauge, Layers, Database, Cpu as Processor,
-  Wrench, Mail, Fingerprint
+  ShieldCheck, Terminal, 
+  Lock, Crosshair, RefreshCw, Rocket, 
+  ShieldAlert, Gauge, Layers, Database,
+  Wrench, Fingerprint
 } from 'lucide-react';
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -40,7 +40,7 @@ const getSafeConfig = () => {
       appId: appId,
       storageBucket: bucket
     };
-  } catch (e) {
+  } catch {
     console.error("Forensic Config Error: Check VITE_FIREBASE_* keys.");
     return null;
   }
@@ -54,13 +54,12 @@ if (isConfigured) {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     auth = getAuth(app);
     db = getFirestore(app);
-  } catch (e) {
-    console.error("Critical: Firebase Handshake Denied", e);
+  } catch {
+    console.error("Critical: Firebase Handshake Denied");
   }
 }
 
 export default function App() {
-  const [user, setUser] = useState(null);
   const [inputText, setInputText] = useState('');
   const [email, setEmail] = useState('');
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -79,8 +78,6 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (!currentUser) {
         signInAnonymously(auth).catch(e => console.error("Identity Verification Failed", e));
-      } else {
-        setUser(currentUser);
       }
     });
     return () => unsubscribe();
