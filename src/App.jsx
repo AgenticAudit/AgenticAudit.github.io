@@ -104,13 +104,21 @@ export default function App() {
     setHarvesting(true);
     setAuthError('');
     try {
+      // Ensure we have a valid UID for the security rule validation
+      const currentUser = auth?.currentUser;
+      if (!currentUser) {
+        throw new Error("unauthenticated: Identity node not linked. Try again.");
+      }
+
       // PATH: /artifacts/{appId}/public/data/leads
+      // Total Fields: 6 (Matches data.keys().size() == 6 in Rules)
       const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'leads'), {
         email: capturedEmail,
         timestamp: serverTimestamp(),
         source: 'forensic_obsidian_gate',
         log_preview: inputText.substring(0, 120),
-        forensic_id: crypto.randomUUID()
+        forensic_id: crypto.randomUUID(),
+        uid: currentUser.uid
       });
       console.log("Data Moat Secured:", docRef.id);
       setHarvesting(false);
