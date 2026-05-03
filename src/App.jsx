@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { 
   ShieldCheck, Terminal, 
   Lock, Crosshair, RefreshCw, Rocket, 
@@ -56,6 +56,40 @@ if (isConfigured) {
     db = getFirestore(app);
   } catch (err) {
     console.error("Critical: Firebase Handshake Denied", err);
+  }
+}
+
+/**
+ * --- FORENSIC INFRASTRUCTURE ---
+ * ERROR BOUNDARY: Captures and logs forensic failures without crashing the UI.
+ */
+class GlobalErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Forensic Engine Crash:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#050507] flex items-center justify-center p-6 text-center">
+          <div className="max-w-md border border-rose-500/50 p-12 bg-rose-500/5">
+            <h1 className="text-rose-500 font-black text-2xl mb-4 uppercase tracking-tighter">System Fragility Detected</h1>
+            <p className="text-zinc-500 text-xs uppercase tracking-widest mb-8">The forensic engine has encountered a recursive logic fault. Manual hardening required.</p>
+            <button onClick={() => window.location.reload()} className="px-8 py-3 bg-rose-500 text-white font-bold text-[10px] tracking-widest uppercase hover:bg-rose-600 transition-all">Reset Buffer</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
   }
 }
 
@@ -329,7 +363,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050507] text-zinc-400 font-sans selection:bg-rose-500/30 selection:text-rose-100 pb-24 relative overflow-hidden">
+    <GlobalErrorBoundary>
+      <div className="min-h-screen bg-[#050507] text-zinc-400 font-sans selection:bg-rose-500/30 selection:text-rose-100 pb-24 relative overflow-hidden">
       
       {/* KINETIC OVERLAYS */}
       <div className="pointer-events-none fixed inset-0 z-50 opacity-[0.03] mix-blend-overlay" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 1px, #fff 1px, #fff 2px)' }}></div>
@@ -519,27 +554,5 @@ export default function App() {
       `}} />
     </div>
     </GlobalErrorBoundary>
-  );
-}
-
-tomorrow!</span>
-              </p>
-              <div className="flex flex-col sm:flex-row items-center gap-6 w-full justify-center max-w-2xl">
-                <button onClick={() => window.location.href = `https://buy.stripe.com/test_sprint?prefilled_email=${encodeURIComponent(email)}`} className="w-full sm:w-auto h-16 px-12 bg-zinc-100 text-black font-black uppercase text-[11px] tracking-[0.3em] hover:invert transition-all shadow-[0_0_30px_rgba(255,255,255,0.05)] active:scale-95"><Rocket className="w-4 h-4" /><span>AGENT PRODUCTION SPRINT ($500)</span></button>
-                <button onClick={() => window.location.href = `https://buy.stripe.com/test_diagnostic?prefilled_email=${encodeURIComponent(email)}`} className="w-full sm:w-auto h-16 px-10 border border-zinc-700 text-[9px] font-bold text-zinc-500 uppercase tracking-widest hover:bg-zinc-900 hover:text-zinc-100">Agent Diagnostics Report ($99)</button>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
-        @keyframes glitchChroma { 0% { text-shadow: 1px 0 #f43f5e, -1px 0 #0ea5e9; opacity: 1; } 50% { text-shadow: -1px 0 #f43f5e, 1px 0 #0ea5e9; opacity: 0.8; } 100% { text-shadow: 1px 0 #f43f5e, -1px 0 #0ea5e9; opacity: 1; } }
-        .glitch-chroma { animation: glitchChroma 2s ease-in-out infinite; }
-        .custom-scrollbar::-webkit-scrollbar { width: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; }
-      `}} />
-    </div>
   );
 }
